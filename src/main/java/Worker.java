@@ -17,6 +17,8 @@ public class Worker implements Watcher {
     private final int SESSION_TIMEOUT = 15000;
     private final String connectionString;
     private final String serverId = Integer.toHexString(random.nextInt());
+    private final ChildrenCache assignedTasksCache = new ChildrenCache();
+    private final ThreadPoolExecutor threadPoolExecutor;
     private ZooKeeper zooKeeper;
     AsyncCallback.StringCallback createWorkerCallback = new AsyncCallback.StringCallback() {
         public void processResult(int rc, String path, Object ctx, String name) {
@@ -45,11 +47,6 @@ public class Worker implements Watcher {
             }
         }
     };
-    private volatile boolean expired;
-    private volatile boolean connected;
-    private String status;
-    private final ChildrenCache assignedTasksCache = new ChildrenCache();
-    private final ThreadPoolExecutor threadPoolExecutor;
     private final AsyncCallback.StringCallback createAssignNodeCallback = new AsyncCallback.StringCallback() {
         public void processResult(int rc, String path, Object ctx, String name) {
             switch (KeeperException.Code.get(rc)) {
@@ -97,7 +94,18 @@ public class Worker implements Watcher {
                     LOG.error("Failed to delete task assignment: " + KeeperException.create(rc, path));
             }
         }
-    }
+    };
+    Watcher newTaskWatcher = new Watcher() {
+        public void process(WatchedEvent watchedEvent) {
+            if (watchedEvent.getType() == Event.EventType.NodeChildrenChanged) {
+                getTasks();
+                return;
+            }
+        }
+    };
+    private volatile boolean expired;
+    private volatile boolean connected;
+    private String status;
     private final AsyncCallback.DataCallback taskDataCallback = new AsyncCallback.DataCallback() {
         public void processResult(int rc, String path, Object ctx, byte[] bytes, final Stat stat) {
             switch (KeeperException.Code.get(rc)) {
@@ -110,6 +118,7 @@ public class Worker implements Watcher {
                         public Runnable init(byte[] data, Object ctx) {
                             this.data = data;
                             this.ctx = ctx;
+                            return this;
                         }
 
                         public void run() {
@@ -140,6 +149,7 @@ public class Worker implements Watcher {
                             public Runnable init(List<String> children, DataCallback cb) {
                                 this.children = children;
                                 this.cb = cb;
+                                return this;
                             }
 
                             public void run() {
@@ -166,14 +176,6 @@ public class Worker implements Watcher {
                     break;
                 default:
                     LOG.error("Error fetching tasks." + KeeperException.create(rc, path));
-            }
-        }
-    };
-    Watcher newTaskWatcher = new Watcher() {
-        public void process(WatchedEvent watchedEvent) {
-            if (watchedEvent.getType() == Event.EventType.NodeChildrenChanged) {
-                getTasks();
-                return;
             }
         }
     };

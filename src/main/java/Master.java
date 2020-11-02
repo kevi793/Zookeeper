@@ -202,7 +202,7 @@ public class Master implements Watcher {
             switch (KeeperException.Code.get(rc)) {
                 case OK:
                     LOG.info("Successfully got list of children");
-                    reassignAndSet(list);
+//                    reassignAndSet(list);
                     break;
                 case CONNECTIONLOSS:
                     getWorkers();
@@ -211,7 +211,7 @@ public class Master implements Watcher {
                     LOG.error("Get children failed", KeeperException.create(rc, path));
             }
         }
-    }
+    };
 
     void getWorkers() {
         this.zooKeeper.getChildren("/workers",
